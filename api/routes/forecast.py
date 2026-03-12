@@ -1,9 +1,8 @@
 ﻿from fastapi import APIRouter
-import joblib, numpy as np, os, sys
+import joblib, numpy as np, sys
 from datetime import datetime, timedelta
 
 sys.path.insert(0, "D:/fyp/nexus-erp/ai-module")
-
 router = APIRouter()
 
 BASE_DIR = "D:/fyp/nexus-erp/ai-module"
@@ -20,12 +19,15 @@ def get_zones(risk: str):
     elif risk == "Medium": return ["G-11", "F-6"]
     else:                  return []
 
-def get_weather_factors(temp: float, wind: float):
+def get_weather_factors(temp: float, wind: float,
+                        rainfall: float, grid_load: float):
     factors = []
-    if temp > 35:   factors.append("Heatwave alert")
-    if temp < 5:    factors.append("Cold wave alert")
-    if wind > 5:    factors.append("High wind speed")
-    if not factors: factors.append("Normal conditions")
+    if temp > 35:        factors.append("Heatwave alert")
+    if temp < 5:         factors.append("Cold wave alert")
+    if wind > 6:         factors.append("High wind speed")
+    if rainfall > 10:    factors.append("Heavy rainfall")
+    if grid_load > 90:   factors.append("Grid overload risk")
+    if not factors:      factors.append("Normal conditions")
     return factors
 
 def get_actions(risk: str):
@@ -42,31 +44,38 @@ def get_actions(risk: str):
 
 @router.get("/forecast")
 def get_forecast():
-    forecast = []
-    today = datetime.today()
+    forecast   = []
+    today      = datetime.today()
+    prev_outage = 0
 
     for i in range(7):
-        date = today + timedelta(days=i)
+        date  = today + timedelta(days=i)
         month = date.month
 
         if month in [6, 7, 8]:
             temp, humidity, wind = 37.0, 62.0, 3.8
+            rainfall, grid_load  = 8.0, 88.0
         elif month in [12, 1, 2]:
             temp, humidity, wind = 9.0, 72.0, 2.5
+            rainfall, grid_load  = 1.0, 70.0
         else:
             temp, humidity, wind = 26.0, 55.0, 3.2
+            rainfall, grid_load  = 3.0, 75.0
 
         season = (0 if month in [12,1,2] else
                   1 if month in [3,4,5] else
                   2 if month in [6,7,8] else 3)
 
-        features = np.array([[temp, humidity, wind,
-                               date.weekday(), month, season]])
+        features = np.array([[
+            temp, humidity, wind, rainfall,
+            grid_load, 15000.0, prev_outage, 0,
+            date.weekday(), month, season]])
 
-        demand = float(demand_model.predict(features)[0])
+        demand      = float(demand_model.predict(features)[0])
         outage_prob = float(
             outage_model.predict_proba(features)[0][1] * 100)
-        risk = get_risk_level(outage_prob)
+        risk        = get_risk_level(outage_prob)
+        prev_outage = 1 if outage_prob > 50 else 0
 
         forecast.append({
             "date":                date.strftime("%Y-%m-%d"),
@@ -75,7 +84,8 @@ def get_forecast():
             "outage_probability":  round(outage_prob, 1),
             "risk_level":          risk,
             "affected_zones":      get_zones(risk),
-            "weather_factors":     get_weather_factors(temp, wind),
+            "weather_factors":     get_weather_factors(
+                temp, wind, rainfall, grid_load),
             "recommended_actions": get_actions(risk)
         })
 
