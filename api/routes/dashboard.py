@@ -23,14 +23,20 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
     items = inv_data["items"]
     
     cat_breakdown = {}
+    # Provide both Title Case and lowercase/aliases for maximum frontend compatibility
     for cat in ["Generation", "Infrastructure", "Operational"]:
         cat_items = [i for i in items if i["category"] == cat]
-        cat_breakdown[cat.lower()] = {
+        stats = {
             "ok":       sum(1 for x in cat_items if x["status"] == "OK"),
             "low":      sum(1 for x in cat_items if x["status"] == "Low"),
             "critical": sum(1 for x in cat_items if x["status"] == "Critical"),
             "total":    len(cat_items)
         }
+        cat_breakdown[cat] = stats
+        cat_breakdown[cat.lower()] = stats
+        if cat == "Operational":
+            cat_breakdown["operation"] = stats
+            cat_breakdown["Operation"] = stats
 
     inv_summary = {
         **inv_data["summary"],
