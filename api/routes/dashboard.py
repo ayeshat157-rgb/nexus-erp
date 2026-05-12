@@ -18,9 +18,24 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
         "high_risk_days": sum(1 for d in forecast_data["forecast"] if d["risk_level"] == "High")
     }
 
-    # 2. Get Inventory Summary
+    # 2. Get Inventory Summary with category breakdown
     inv_data = inventory_overview(None, db)
-    inv_summary = inv_data["summary"]
+    items = inv_data["items"]
+    
+    cat_breakdown = {}
+    for cat in ["Generation", "Infrastructure", "Operational"]:
+        cat_items = [i for i in items if i["category"] == cat]
+        cat_breakdown[cat.lower()] = {
+            "ok":       sum(1 for x in cat_items if x["status"] == "OK"),
+            "low":      sum(1 for x in cat_items if x["status"] == "Low"),
+            "critical": sum(1 for x in cat_items if x["status"] == "Critical"),
+            "total":    len(cat_items)
+        }
+
+    inv_summary = {
+        **inv_data["summary"],
+        "categories": cat_breakdown
+    }
 
     # 3. Recent Notifications
     notifications = db.execute(
